@@ -14,3 +14,7 @@ dataset/
 runs/
 
 *.npz
+
+ARCHITECTURE.md
+
+PAPER_BRIEF.md
