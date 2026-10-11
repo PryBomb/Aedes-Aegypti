@@ -1,0 +1,98 @@
+site:
+  monitoring_point: "KAS-1E-01"
+  timezone: "Asia/Manila"
+
+paths:
+  data_dir: "C:/sentinel_data"
+  db: "data/sentinel.db"
+  data: "data"
+  logs: "data/logs"
+
+logging:
+  level: "INFO"
+
+mode: pi                 # pi | usb | file
+
+file_source:
+  path: ""
+
+camera:
+  format: "RGB888"       # Picamera2 format. RGB888 stores bytes B,G,R in memory (native BGR).
+  usb_index: 0           # OpenCV device index for usb mode
+
+schedule:
+  windows: [["06:00", "09:00"], ["16:00", "19:00"]]
+  test_mode: false
+
+capture:
+  width: 1280
+  height: 720
+  fps: 30
+  preroll_s: 3
+  postroll_s: 3
+
+yolo:
+  weights: "models/best.pt"
+  backend: pt            # pt | ncnn | onnx | openvino
+  imgsz: 640
+  conf: 0.25
+  iou: 0.5
+  target_class_names: ["Aedes Aegypti"]
+  non_target_class_names: ["Aedes Albopictus"]
+  use_tracker: false
+
+events:
+  event_gap_s: 1.5
+  min_frames: 3
+  min_mean_conf: 0.4
+
+cnn:
+  enabled: false
+  model: "models/mosquito_model.tflite"
+  max_crops_per_event: 3
+  reject_threshold: 0.8
+
+index:
+  # Alert delay is bounded by bin_minutes; shorter bins = lower latency but noisier index.
+  bin_minutes: 30
+  method: "events_per_hour"
+  # Bins with coverage below min_coverage are excluded (valid=0) from baseline and alerting.
+  min_coverage: 0.5
+
+baseline:
+  days: 7
+  min_bins: 12   # minimum valid bins before baseline is considered ready
+  min_sigma: 0.5 # floor sigma to prevent division-by-zero
+
+alert:
+  method: "both"         # cusum | ears | both
+  watch_fraction: 0.6
+  cooldown_min: 30
+  min_events: 3          # minimum confirmed target events in bin before ALERT can fire
+  watch_min_events: 2    # minimum confirmed target events in bin before WATCH can be declared
+  clear_bins: 2          # consecutive bins below watch threshold required to close an alert episode
+  cusum:
+    k: 0.5
+    h: 4.0
+    reset_after_alert: true
+  ears:
+    lag_bins: 3          # baseline window inside current window (to be tuned on real data)
+    z: 3.0
+    min_sd: 0.5
+
+
+gpio:
+  led_pin: 17            # TODO(confirm): verify against actual wiring
+  buzzer_pin: 27         # TODO(confirm): verify against actual wiring
+  buzzer_enabled: true
+
+evidence:
+  max_gb: 20
+  save_clips: true
+
+thermal:
+  throttle_c: 80
+
+dashboard:
+  host: "0.0.0.0"
+  port: 5000

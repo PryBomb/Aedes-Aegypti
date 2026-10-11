@@ -1,0 +1,769 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>MosquitoSentinel — Training Monitor</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <style>
+    :root {
+      --bg:       #0a0e1a;
+      --surface:  #111827;
+      --surface2: #1a2236;
+      --border:   #1e2d47;
+      --accent:   #22d3ee;
+      --accent2:  #a78bfa;
+      --green:    #34d399;
+      --yellow:   #fbbf24;
+      --red:      #f87171;
+      --text:     #e2e8f0;
+      --muted:    #64748b;
+      --radius:   12px;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Inter', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    /* ── Top gradient bar ── */
+    body::before {
+      content: '';
+      position: fixed;
+      top: 0; left: 0; right: 0;
+      height: 3px;
+      background: linear-gradient(90deg, var(--accent), var(--accent2), var(--green));
+      z-index: 1000;
+    }
+
+    /* ── Header ── */
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 1.25rem 2rem;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      position: sticky; top: 0; z-index: 100;
+    }
+
+    .logo {
+      display: flex; align-items: center; gap: 0.75rem;
+    }
+
+    .logo-icon {
+      width: 38px; height: 38px;
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      border-radius: 10px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 1.1rem;
+    }
+
+    .logo-text h1 {
+      font-size: 1.1rem; font-weight: 700;
+      background: linear-gradient(90deg, var(--accent), var(--accent2));
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    }
+
+    .logo-text p { font-size: 0.72rem; color: var(--muted); }
+
+    .header-right {
+      display: flex; align-items: center; gap: 1rem;
+    }
+
+    .status-badge {
+      display: flex; align-items: center; gap: 0.5rem;
+      padding: 0.4rem 0.9rem;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      font-size: 0.78rem; font-weight: 500;
+    }
+
+    .status-dot {
+      width: 8px; height: 8px; border-radius: 50%;
+      background: var(--muted);
+      transition: background 0.3s;
+    }
+
+    .status-dot.active { background: var(--green); animation: pulse 1.5s infinite; }
+    .status-dot.idle   { background: var(--yellow); }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.6; transform: scale(1.2); }
+    }
+
+    /* ── Layout ── */
+    .layout {
+      display: grid;
+      grid-template-columns: 260px 1fr;
+      grid-template-rows: auto 1fr;
+      gap: 0;
+      min-height: calc(100vh - 65px);
+    }
+
+    /* ── Sidebar ── */
+    .sidebar {
+      background: var(--surface);
+      border-right: 1px solid var(--border);
+      padding: 1.5rem 1rem;
+      grid-row: 1 / 3;
+    }
+
+    .sidebar-title {
+      font-size: 0.7rem; font-weight: 600; letter-spacing: 0.08em;
+      color: var(--muted); text-transform: uppercase; margin-bottom: 0.75rem;
+      padding: 0 0.5rem;
+    }
+
+    .run-item {
+      padding: 0.6rem 0.75rem;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: background 0.2s, color 0.2s;
+      font-size: 0.83rem;
+      display: flex; align-items: center; gap: 0.6rem;
+      margin-bottom: 2px;
+    }
+
+    .run-item:hover { background: var(--surface2); }
+    .run-item.active { background: rgba(34,211,238,0.1); color: var(--accent); font-weight: 600; }
+    .run-item .run-icon { font-size: 0.9rem; }
+
+    /* ── Stats bar ── */
+    .stats-bar {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 1rem;
+      padding: 1.25rem 1.5rem;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .stat-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 1rem 1.25rem;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .stat-card::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(135deg, transparent, rgba(255,255,255,0.02));
+      pointer-events: none;
+    }
+
+    .stat-label {
+      font-size: 0.7rem; font-weight: 600; letter-spacing: 0.06em;
+      color: var(--muted); text-transform: uppercase; margin-bottom: 0.5rem;
+    }
+
+    .stat-value {
+      font-size: 1.75rem; font-weight: 700;
+      font-family: 'JetBrains Mono', monospace;
+      line-height: 1;
+    }
+
+    .stat-sub {
+      font-size: 0.72rem; color: var(--muted); margin-top: 0.3rem;
+    }
+
+    .stat-card.accent  .stat-value { color: var(--accent); }
+    .stat-card.purple  .stat-value { color: var(--accent2); }
+    .stat-card.green   .stat-value { color: var(--green); }
+    .stat-card.yellow  .stat-value { color: var(--yellow); }
+
+    /* ── Main content ── */
+    .main {
+      padding: 1.25rem 1.5rem;
+      display: grid;
+      grid-template-rows: auto auto 1fr;
+      gap: 1.25rem;
+    }
+
+    /* ── Charts row ── */
+    .charts-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1.25rem;
+    }
+
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 1.25rem;
+    }
+
+    .card-header {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: 1rem;
+    }
+
+    .card-title {
+      font-size: 0.85rem; font-weight: 600;
+      display: flex; align-items: center; gap: 0.5rem;
+    }
+
+    .card-title .dot {
+      width: 6px; height: 6px; border-radius: 50%;
+      background: var(--accent);
+    }
+
+    .chart-wrap {
+      position: relative;
+      height: 200px;
+    }
+
+    /* ── Bottom row ── */
+    .bottom-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1.25rem;
+    }
+
+    /* ── Log feed ── */
+    .log-feed {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.75rem;
+      height: 220px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column-reverse;
+      gap: 2px;
+      padding-right: 4px;
+    }
+
+    .log-feed::-webkit-scrollbar { width: 4px; }
+    .log-feed::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+    .log-line {
+      padding: 0.25rem 0.5rem;
+      border-radius: 4px;
+      animation: fadeIn 0.3s ease;
+      line-height: 1.5;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(-4px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    .log-line.epoch  { background: rgba(34,211,238,0.06); color: var(--accent); }
+    .log-line.info   { color: var(--text); }
+    .log-line.metric { background: rgba(167,139,250,0.06); color: var(--accent2); }
+    .log-line.warn   { color: var(--yellow); }
+
+    /* ── Detection gallery ── */
+    .gallery {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 0.5rem;
+      max-height: 220px;
+      overflow-y: auto;
+    }
+
+    .gallery::-webkit-scrollbar { width: 4px; }
+    .gallery::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+    .gallery-item {
+      border-radius: 6px;
+      overflow: hidden;
+      border: 1px solid var(--border);
+      cursor: pointer;
+      transition: transform 0.2s, border-color 0.2s;
+      aspect-ratio: 1;
+      background: var(--surface2);
+    }
+
+    .gallery-item:hover {
+      transform: scale(1.03);
+      border-color: var(--accent);
+    }
+
+    .gallery-item img {
+      width: 100%; height: 100%;
+      object-fit: cover;
+    }
+
+    .gallery-empty {
+      grid-column: 1/-1;
+      display: flex; align-items: center; justify-content: center;
+      height: 100px;
+      color: var(--muted); font-size: 0.8rem;
+    }
+
+    /* ── Epoch table ── */
+    .epoch-table-wrap {
+      overflow-x: auto;
+    }
+
+    table {
+      width: 100%; border-collapse: collapse;
+      font-size: 0.78rem;
+    }
+
+    th {
+      text-align: left;
+      padding: 0.5rem 0.75rem;
+      color: var(--muted);
+      font-size: 0.68rem;
+      font-weight: 600;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      border-bottom: 1px solid var(--border);
+    }
+
+    td {
+      padding: 0.45rem 0.75rem;
+      font-family: 'JetBrains Mono', monospace;
+      border-bottom: 1px solid rgba(30,45,71,0.5);
+    }
+
+    tr:hover td { background: var(--surface2); }
+    tr:last-child td { border-bottom: none; }
+
+    td.good  { color: var(--green); }
+    td.ok    { color: var(--yellow); }
+
+    /* ── Image lightbox ── */
+    .lightbox {
+      display: none;
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,0.85);
+      z-index: 500;
+      align-items: center; justify-content: center;
+    }
+
+    .lightbox.open { display: flex; }
+
+    .lightbox img {
+      max-width: 90vw; max-height: 90vh;
+      border-radius: 8px;
+      border: 2px solid var(--border);
+    }
+
+    .lightbox-close {
+      position: fixed; top: 1rem; right: 1.5rem;
+      font-size: 1.5rem; cursor: pointer;
+      color: var(--muted);
+    }
+
+    /* ── Responsive ── */
+    @media (max-width: 1100px) {
+      .layout { grid-template-columns: 1fr; }
+      .sidebar { display: none; }
+      .stats-bar { grid-template-columns: repeat(2, 1fr); }
+      .charts-row, .bottom-row { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- Header -->
+<header>
+  <div class="logo">
+    <div class="logo-icon">🦟</div>
+    <div class="logo-text">
+      <h1>MosquitoSentinel</h1>
+      <p>YOLOv11 · Training Monitor</p>
+    </div>
+  </div>
+  <div class="header-right">
+    <div class="status-badge">
+      <div class="status-dot idle" id="statusDot"></div>
+      <span id="statusText">Connecting…</span>
+    </div>
+  </div>
+</header>
+
+<!-- Main layout -->
+<div class="layout">
+
+  <!-- Sidebar -->
+  <aside class="sidebar">
+    <div class="sidebar-title">Training Runs</div>
+    <div id="runList">
+      <div class="run-item" style="color:var(--muted);font-size:0.8rem">Loading…</div>
+    </div>
+  </aside>
+
+  <!-- Content area -->
+  <div>
+    <!-- Stats bar -->
+    <div class="stats-bar">
+      <div class="stat-card accent">
+        <div class="stat-label">Current Epoch</div>
+        <div class="stat-value" id="statEpoch">—</div>
+        <div class="stat-sub" id="statEpochSub">of — total</div>
+      </div>
+      <div class="stat-card green">
+        <div class="stat-label">mAP50</div>
+        <div class="stat-value" id="statMap50">—</div>
+        <div class="stat-sub">Best detected class</div>
+      </div>
+      <div class="stat-card purple">
+        <div class="stat-label">mAP50-95</div>
+        <div class="stat-value" id="statMap5095">—</div>
+        <div class="stat-sub">Strict accuracy</div>
+      </div>
+      <div class="stat-card yellow">
+        <div class="stat-label">Box Loss</div>
+        <div class="stat-value" id="statLoss">—</div>
+        <div class="stat-sub">Train box loss</div>
+      </div>
+    </div>
+
+    <!-- Main content -->
+    <div class="main">
+
+      <!-- Charts -->
+      <div class="charts-row">
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title"><div class="dot"></div> mAP Progress</div>
+          </div>
+          <div class="chart-wrap">
+            <canvas id="mapChart"></canvas>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title"><div class="dot" style="background:var(--yellow)"></div> Loss Curves</div>
+          </div>
+          <div class="chart-wrap">
+            <canvas id="lossChart"></canvas>
+          </div>
+        </div>
+      </div>
+
+      <!-- Bottom row -->
+      <div class="bottom-row">
+
+        <!-- Log feed -->
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title"><div class="dot" style="background:var(--green)"></div> Live Log</div>
+            <span style="font-size:0.72rem;color:var(--muted)">WebSocket stream</span>
+          </div>
+          <div class="log-feed" id="logFeed">
+            <div class="log-line info">Waiting for training data…</div>
+          </div>
+        </div>
+
+        <!-- Gallery -->
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title"><div class="dot" style="background:var(--accent2)"></div> Predictions</div>
+            <button onclick="loadGallery()" style="background:none;border:1px solid var(--border);color:var(--muted);border-radius:6px;padding:0.25rem 0.6rem;cursor:pointer;font-size:0.72rem;">Refresh</button>
+          </div>
+          <div class="gallery" id="gallery">
+            <div class="gallery-empty">No prediction images yet</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Epoch table -->
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title"><div class="dot" style="background:var(--accent)"></div> Epoch History</div>
+        </div>
+        <div class="epoch-table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Epoch</th>
+                <th>Box Loss</th>
+                <th>Cls Loss</th>
+                <th>DFL Loss</th>
+                <th>mAP50</th>
+                <th>mAP50-95</th>
+                <th>Precision</th>
+                <th>Recall</th>
+              </tr>
+            </thead>
+            <tbody id="epochTable">
+              <tr><td colspan="8" style="color:var(--muted);text-align:center">No data yet</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<!-- Lightbox -->
+<div class="lightbox" id="lightbox" onclick="closeLightbox()">
+  <div class="lightbox-close" onclick="closeLightbox()">✕</div>
+  <img id="lightboxImg" src="" alt="Detection preview" />
+</div>
+
+<script>
+  // ── State ──────────────────────────────────────────────────────────────────
+  let ws = null;
+  let activeRun = null;
+  let epochData = [];
+  let mapChart, lossChart;
+
+  // ── Charts ─────────────────────────────────────────────────────────────────
+  const chartDefaults = {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: { legend: { labels: { color: '#94a3b8', font: { family: 'Inter', size: 11 } } } },
+    scales: {
+      x: {
+        ticks: { color: '#64748b', font: { size: 10 } },
+        grid: { color: 'rgba(30,45,71,0.8)' }
+      },
+      y: {
+        ticks: { color: '#64748b', font: { size: 10 } },
+        grid: { color: 'rgba(30,45,71,0.8)' }
+      }
+    },
+    animation: { duration: 400 }
+  };
+
+  mapChart = new Chart(document.getElementById('mapChart'), {
+    type: 'line',
+    data: {
+      labels: [],
+      datasets: [
+        { label: 'mAP50', data: [], borderColor: '#22d3ee', backgroundColor: 'rgba(34,211,238,0.08)', tension: 0.4, fill: true, pointRadius: 2 },
+        { label: 'mAP50-95', data: [], borderColor: '#a78bfa', backgroundColor: 'rgba(167,139,250,0.08)', tension: 0.4, fill: true, pointRadius: 2 }
+      ]
+    },
+    options: { ...chartDefaults }
+  });
+
+  lossChart = new Chart(document.getElementById('lossChart'), {
+    type: 'line',
+    data: {
+      labels: [],
+      datasets: [
+        { label: 'Box Loss', data: [], borderColor: '#fbbf24', backgroundColor: 'rgba(251,191,36,0.08)', tension: 0.4, fill: true, pointRadius: 2 },
+        { label: 'Cls Loss', data: [], borderColor: '#f87171', backgroundColor: 'rgba(248,113,113,0.08)', tension: 0.4, fill: true, pointRadius: 2 }
+      ]
+    },
+    options: { ...chartDefaults }
+  });
+
+  // ── Parse YOLO CSV keys ────────────────────────────────────────────────────
+  function parseRow(row) {
+    const get = (obj, ...keys) => {
+      for (const k of keys) {
+        const found = Object.keys(obj).find(ok => ok.trim() === k.trim());
+        if (found !== undefined) return parseFloat(obj[found]) || 0;
+      }
+      return 0;
+    };
+    return {
+      epoch:    get(row, 'epoch'),
+      boxLoss:  get(row, 'train/box_loss'),
+      clsLoss:  get(row, 'train/cls_loss'),
+      dflLoss:  get(row, 'train/dfl_loss'),
+      map50:    get(row, 'metrics/mAP50(B)'),
+      map5095:  get(row, 'metrics/mAP50-95(B)'),
+      precision: get(row, 'metrics/precision(B)'),
+      recall:   get(row, 'metrics/recall(B)'),
+    };
+  }
+
+  function rebuildCharts(rows) {
+    const parsed = rows.map(parseRow);
+    const labels = parsed.map(r => `E${r.epoch}`);
+
+    mapChart.data.labels = labels;
+    mapChart.data.datasets[0].data = parsed.map(r => r.map50);
+    mapChart.data.datasets[1].data = parsed.map(r => r.map5095);
+    mapChart.update();
+
+    lossChart.data.labels = labels;
+    lossChart.data.datasets[0].data = parsed.map(r => r.boxLoss);
+    lossChart.data.datasets[1].data = parsed.map(r => r.clsLoss);
+    lossChart.update();
+
+    // Update epoch table
+    const tbody = document.getElementById('epochTable');
+    tbody.innerHTML = [...parsed].reverse().map(r => `
+      <tr>
+        <td>${r.epoch}</td>
+        <td>${r.boxLoss.toFixed(4)}</td>
+        <td>${r.clsLoss.toFixed(4)}</td>
+        <td>${r.dflLoss.toFixed(4)}</td>
+        <td class="${r.map50 > 0.5 ? 'good' : 'ok'}">${r.map50.toFixed(4)}</td>
+        <td class="${r.map5095 > 0.35 ? 'good' : 'ok'}">${r.map5095.toFixed(4)}</td>
+        <td>${r.precision.toFixed(4)}</td>
+        <td>${r.recall.toFixed(4)}</td>
+      </tr>
+    `).join('');
+
+    if (parsed.length > 0) {
+      const last = parsed[parsed.length - 1];
+      document.getElementById('statEpoch').textContent = last.epoch;
+      document.getElementById('statMap50').textContent = last.map50.toFixed(3);
+      document.getElementById('statMap5095').textContent = last.map5095.toFixed(3);
+      document.getElementById('statLoss').textContent = last.boxLoss.toFixed(4);
+    }
+  }
+
+  // ── WebSocket ──────────────────────────────────────────────────────────────
+  function connect() {
+    const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+    ws = new WebSocket(`${proto}://${location.host}/ws`);
+
+    ws.onopen = () => {
+      setStatus('active', 'Connected');
+      addLog('Connected to training monitor', 'info');
+    };
+
+    ws.onclose = () => {
+      setStatus('idle', 'Disconnected');
+      addLog('Connection lost — retrying in 3s…', 'warn');
+      setTimeout(connect, 3000);
+    };
+
+    ws.onmessage = (e) => {
+      const msg = JSON.parse(e.data);
+
+      if (msg.type === 'history') {
+        activeRun = msg.run;
+        epochData = msg.rows;
+        addLog(`Loaded run: ${msg.run} (${msg.rows.length} epochs)`, 'metric');
+        rebuildCharts(epochData);
+        updateStatEpochSub();
+        loadGallery();
+      }
+
+      if (msg.type === 'run_start') {
+        activeRun = msg.run;
+        epochData = [];
+        addLog(`🚀 New run started: ${msg.run}`, 'epoch');
+        loadRuns();
+      }
+
+      if (msg.type === 'epoch') {
+        epochData.push(msg.data);
+        const p = parseRow(msg.data);
+        addLog(`Epoch ${p.epoch} → mAP50: ${p.map50.toFixed(4)}  box_loss: ${p.boxLoss.toFixed(4)}`, 'epoch');
+        rebuildCharts(epochData);
+        updateStatEpochSub();
+        setStatus('active', 'Training…');
+      }
+    };
+  }
+
+  // ── UI helpers ─────────────────────────────────────────────────────────────
+  function setStatus(state, text) {
+    document.getElementById('statusDot').className = `status-dot ${state}`;
+    document.getElementById('statusText').textContent = text;
+  }
+
+  function addLog(msg, type = 'info') {
+    const feed = document.getElementById('logFeed');
+    const div = document.createElement('div');
+    div.className = `log-line ${type}`;
+    const time = new Date().toLocaleTimeString();
+    div.textContent = `[${time}] ${msg}`;
+    feed.prepend(div);
+    // cap at 100 lines
+    while (feed.children.length > 100) feed.removeChild(feed.lastChild);
+  }
+
+  function updateStatEpochSub() {
+    if (epochData.length > 0) {
+      const last = parseRow(epochData[epochData.length - 1]);
+      document.getElementById('statEpochSub').textContent = `of — total`;
+    }
+  }
+
+  // ── Runs sidebar ───────────────────────────────────────────────────────────
+  async function loadRuns() {
+    const res = await fetch('/api/runs');
+    const { runs } = await res.json();
+    const list = document.getElementById('runList');
+    list.innerHTML = runs.length === 0
+      ? '<div class="run-item" style="color:var(--muted)">No runs yet</div>'
+      : runs.map(r => `
+          <div class="run-item ${r === activeRun ? 'active' : ''}" onclick="selectRun('${r}')">
+            <span class="run-icon">📂</span>${r}
+          </div>
+        `).join('');
+  }
+
+  async function selectRun(name) {
+    activeRun = name;
+    const res = await fetch(`/api/metrics/${name}`);
+    const { rows } = await res.json();
+    epochData = rows;
+    addLog(`Switched to run: ${name}`, 'metric');
+    rebuildCharts(epochData);
+    loadGallery();
+    loadRuns();
+  }
+
+  // ── Gallery ────────────────────────────────────────────────────────────────
+  async function loadGallery() {
+    if (!activeRun) return;
+    // Try 'predict' subdir first, then the run itself
+    const runName = activeRun.includes('predict') ? activeRun : activeRun;
+    const res = await fetch(`/api/images/predict`);
+    const { images } = await res.json();
+    const el = document.getElementById('gallery');
+    if (!images || images.length === 0) {
+      el.innerHTML = '<div class="gallery-empty">No predictions yet — run predict.py first</div>';
+      return;
+    }
+    el.innerHTML = images.map(img => `
+      <div class="gallery-item" onclick="openLightbox('${img.data}')">
+        <img src="${img.data}" alt="${img.name}" loading="lazy" />
+      </div>
+    `).join('');
+  }
+
+  // ── Lightbox ───────────────────────────────────────────────────────────────
+  function openLightbox(src) {
+    document.getElementById('lightboxImg').src = src;
+    document.getElementById('lightbox').classList.add('open');
+  }
+  function closeLightbox() {
+    document.getElementById('lightbox').classList.remove('open');
+  }
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') closeLightbox(); });
+
+  // ── Poll status ────────────────────────────────────────────────────────────
+  async function pollStatus() {
+    try {
+      const res = await fetch('/api/status');
+      const data = await res.json();
+      if (data.training_active) {
+        setStatus('active', 'Training…');
+      }
+      if (data.latest_run && !activeRun) {
+        activeRun = data.latest_run;
+        selectRun(activeRun);
+      }
+      document.getElementById('statEpochSub').textContent = `of — total`;
+    } catch(e) {}
+  }
+
+  // ── Init ───────────────────────────────────────────────────────────────────
+  connect();
+  loadRuns();
+  pollStatus();
+  setInterval(loadRuns, 5000);
+  setInterval(pollStatus, 5000);
+</script>
+</body>
+</html>

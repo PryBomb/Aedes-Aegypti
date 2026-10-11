@@ -1,0 +1,634 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>MosquitoSentinel — Live Detection</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg:        #070c18;
+      --surface:   #0e1623;
+      --surface2:  #162030;
+      --border:    #1c2e47;
+      --accent:    #00e5ff;
+      --accent2:   #a259ff;
+      --green:     #00e676;
+      --yellow:    #ffca28;
+      --red:       #ff5252;
+      --text:      #e0ecff;
+      --muted:     #4a6080;
+      --r:         14px;
+      --glow-cyan: 0 0 20px rgba(0,229,255,0.25);
+      --glow-pur:  0 0 20px rgba(162,89,255,0.2);
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Inter', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    /* Animated background grid */
+    body::before {
+      content: '';
+      position: fixed; inset: 0;
+      background-image:
+        linear-gradient(rgba(0,229,255,0.03) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(0,229,255,0.03) 1px, transparent 1px);
+      background-size: 40px 40px;
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    /* Top accent bar */
+    body::after {
+      content: '';
+      position: fixed; top: 0; left: 0; right: 0; height: 2px;
+      background: linear-gradient(90deg, var(--accent), var(--accent2), var(--green));
+      z-index: 1000;
+    }
+
+    /* ── Header ── */
+    header {
+      position: relative; z-index: 10;
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 1rem 2rem;
+      background: rgba(14,22,35,0.85);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--border);
+    }
+
+    .brand {
+      display: flex; align-items: center; gap: 0.9rem;
+    }
+
+    .brand-icon {
+      width: 42px; height: 42px;
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      border-radius: 12px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 1.2rem;
+      box-shadow: var(--glow-cyan);
+    }
+
+    .brand-name {
+      font-size: 1.15rem; font-weight: 800; letter-spacing: -0.02em;
+      background: linear-gradient(90deg, var(--accent), var(--accent2));
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    }
+
+    .brand-sub {
+      font-size: 0.7rem; color: var(--muted); font-weight: 400; letter-spacing: 0.05em;
+    }
+
+    .header-pills {
+      display: flex; align-items: center; gap: 0.75rem;
+    }
+
+    .pill {
+      display: flex; align-items: center; gap: 0.4rem;
+      padding: 0.35rem 0.85rem;
+      border-radius: 999px;
+      font-size: 0.75rem; font-weight: 500;
+      border: 1px solid var(--border);
+      background: var(--surface);
+    }
+
+    .pill-dot {
+      width: 7px; height: 7px; border-radius: 50%;
+      background: var(--muted);
+    }
+
+    .pill-dot.live   { background: var(--green); animation: blink 1.2s infinite; }
+    .pill-dot.alert  { background: var(--red);   animation: blink 0.6s infinite; }
+
+    @keyframes blink {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.3; }
+    }
+
+    /* ── Main layout ── */
+    .container {
+      position: relative; z-index: 1;
+      display: grid;
+      grid-template-columns: 1fr 340px;
+      grid-template-rows: auto 1fr;
+      gap: 1.25rem;
+      padding: 1.25rem 1.5rem;
+      min-height: calc(100vh - 68px);
+    }
+
+    /* ── Camera feed ── */
+    .camera-section {
+      grid-row: 1 / 3;
+      display: flex; flex-direction: column; gap: 1.25rem;
+    }
+
+    .camera-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--r);
+      overflow: hidden;
+      flex: 1;
+      position: relative;
+    }
+
+    .camera-header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 0.85rem 1.1rem;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .camera-title {
+      font-size: 0.82rem; font-weight: 600;
+      display: flex; align-items: center; gap: 0.5rem;
+    }
+
+    .camera-badge {
+      font-size: 0.65rem; font-weight: 700; letter-spacing: 0.08em;
+      text-transform: uppercase;
+      padding: 0.2rem 0.55rem;
+      border-radius: 999px;
+      background: rgba(0,230,118,0.15);
+      color: var(--green);
+      border: 1px solid rgba(0,230,118,0.3);
+    }
+
+    .camera-feed {
+      width: 100%;
+      aspect-ratio: 4/3;
+      object-fit: cover;
+      display: block;
+      background: #000;
+    }
+
+    /* Scan-line overlay on camera */
+    .camera-overlay {
+      position: absolute;
+      inset: 50px 0 0 0;
+      background: repeating-linear-gradient(
+        transparent,
+        transparent 2px,
+        rgba(0,229,255,0.015) 2px,
+        rgba(0,229,255,0.015) 4px
+      );
+      pointer-events: none;
+    }
+
+    /* Corner brackets */
+    .corner {
+      position: absolute;
+      width: 24px; height: 24px;
+      border-color: var(--accent);
+      border-style: solid;
+      opacity: 0.6;
+    }
+
+    .corner.tl { top: 52px; left: 4px; border-width: 2px 0 0 2px; }
+    .corner.tr { top: 52px; right: 4px; border-width: 2px 2px 0 0; }
+    .corner.bl { bottom: 4px; left: 4px; border-width: 0 0 2px 2px; }
+    .corner.br { bottom: 4px; right: 4px; border-width: 0 2px 2px 0; }
+
+    /* ── Stats row under camera ── */
+    .stats-row {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 0.85rem;
+    }
+
+    .metric-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--r);
+      padding: 1rem 1.1rem;
+      position: relative; overflow: hidden;
+    }
+
+    .metric-card::before {
+      content: '';
+      position: absolute; top: 0; left: 0; right: 0; height: 2px;
+    }
+
+    .metric-card.cyan::before  { background: var(--accent); }
+    .metric-card.green::before { background: var(--green); }
+    .metric-card.purple::before{ background: var(--accent2); }
+
+    .metric-label {
+      font-size: 0.65rem; font-weight: 600; letter-spacing: 0.07em;
+      text-transform: uppercase; color: var(--muted); margin-bottom: 0.4rem;
+    }
+
+    .metric-value {
+      font-size: 2rem; font-weight: 800;
+      font-family: 'JetBrains Mono', monospace;
+      line-height: 1;
+    }
+
+    .metric-card.cyan   .metric-value { color: var(--accent); }
+    .metric-card.green  .metric-value { color: var(--green); }
+    .metric-card.purple .metric-value { color: var(--accent2); }
+
+    .metric-sub { font-size: 0.72rem; color: var(--muted); margin-top: 0.3rem; }
+
+    /* ── Side panel ── */
+    .side-panel {
+      display: flex; flex-direction: column; gap: 1.1rem;
+    }
+
+    .panel-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--r);
+      padding: 1.1rem;
+    }
+
+    .panel-title {
+      font-size: 0.75rem; font-weight: 700; letter-spacing: 0.06em;
+      text-transform: uppercase; color: var(--muted);
+      margin-bottom: 0.9rem;
+      display: flex; align-items: center; gap: 0.5rem;
+    }
+
+    .panel-title-dot {
+      width: 6px; height: 6px; border-radius: 50%;
+    }
+
+    /* ── Class counters ── */
+    .class-row {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 0.65rem 0;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .class-row:last-child { border-bottom: none; }
+
+    .class-info {
+      display: flex; align-items: center; gap: 0.6rem;
+    }
+
+    .class-swatch {
+      width: 10px; height: 10px; border-radius: 2px;
+    }
+
+    .class-name { font-size: 0.82rem; font-weight: 500; }
+    .class-abbr { font-size: 0.68rem; color: var(--muted); }
+
+    .class-count {
+      font-size: 1.3rem; font-weight: 700;
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    /* ── Alert panel ── */
+    .alert-panel {
+      border-radius: var(--r);
+      padding: 0.9rem 1.1rem;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      transition: background 0.4s, border-color 0.4s, box-shadow 0.4s;
+    }
+
+    .alert-panel.triggered {
+      background: rgba(255,82,82,0.08);
+      border-color: rgba(255,82,82,0.4);
+      box-shadow: 0 0 20px rgba(255,82,82,0.15);
+    }
+
+    .alert-icon { font-size: 1.4rem; margin-bottom: 0.4rem; }
+    .alert-text { font-size: 0.82rem; font-weight: 600; }
+    .alert-sub  { font-size: 0.72rem; color: var(--muted); margin-top: 0.2rem; }
+
+    /* ── Detection log ── */
+    .log-scroll {
+      max-height: 200px;
+      overflow-y: auto;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.72rem;
+    }
+
+    .log-scroll::-webkit-scrollbar { width: 3px; }
+    .log-scroll::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+    .log-entry {
+      display: flex; align-items: flex-start; gap: 0.5rem;
+      padding: 0.35rem 0;
+      border-bottom: 1px solid rgba(28,46,71,0.5);
+      animation: slideIn 0.25s ease;
+    }
+
+    @keyframes slideIn {
+      from { opacity: 0; transform: translateX(-6px); }
+      to   { opacity: 1; transform: translateX(0); }
+    }
+
+    .log-time { color: var(--muted); flex-shrink: 0; }
+    .log-cls-aegypti    { color: var(--accent);  }
+    .log-cls-albopictus { color: var(--accent2); }
+    .log-conf { color: var(--muted); margin-left: auto; }
+
+    /* ── FPS chart ── */
+    .fps-bar-wrap {
+      display: flex; flex-direction: column; gap: 0.4rem;
+    }
+
+    .fps-bar-row {
+      display: flex; align-items: center; gap: 0.5rem;
+      font-size: 0.72rem;
+    }
+
+    .fps-bar-label { color: var(--muted); width: 28px; flex-shrink: 0; }
+
+    .fps-bar-track {
+      flex: 1; height: 8px; background: var(--surface2);
+      border-radius: 999px; overflow: hidden;
+    }
+
+    .fps-bar-fill {
+      height: 100%; border-radius: 999px;
+      background: linear-gradient(90deg, var(--accent), var(--green));
+      transition: width 0.5s ease;
+    }
+
+    /* ── Responsive ── */
+    @media (max-width: 900px) {
+      .container { grid-template-columns: 1fr; }
+      .camera-section { grid-row: auto; }
+      .stats-row { grid-template-columns: repeat(3, 1fr); }
+    }
+
+    @media (max-width: 600px) {
+      .stats-row { grid-template-columns: 1fr 1fr; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- Header -->
+<header>
+  <div class="brand">
+    <div class="brand-icon">🦟</div>
+    <div>
+      <div class="brand-name">MosquitoSentinel</div>
+      <div class="brand-sub">Raspberry Pi 5 · Real-time Detection</div>
+    </div>
+  </div>
+  <div class="header-pills">
+    <div class="pill">
+      <div class="pill-dot live" id="liveDot"></div>
+      <span id="liveText">Connecting…</span>
+    </div>
+    <div class="pill">
+      <span>🌡️</span>
+      <span id="fpsDisplay">0 FPS</span>
+    </div>
+    <div class="pill" id="alertPill" style="display:none; border-color:rgba(255,82,82,0.4); color:var(--red)">
+      <div class="pill-dot alert"></div>
+      <span>MOSQUITO DETECTED</span>
+    </div>
+  </div>
+</header>
+
+<!-- Main -->
+<div class="container">
+
+  <!-- Left: Camera + stats -->
+  <div class="camera-section">
+
+    <!-- Camera feed -->
+    <div class="camera-card">
+      <div class="camera-header">
+        <div class="camera-title">
+          📷 Live Camera Feed
+        </div>
+        <span class="camera-badge">LIVE</span>
+      </div>
+      <img class="camera-feed" id="cameraFeed" src="/video" alt="Live camera stream" />
+      <div class="camera-overlay"></div>
+      <div class="corner tl"></div>
+      <div class="corner tr"></div>
+      <div class="corner bl"></div>
+      <div class="corner br"></div>
+    </div>
+
+    <!-- Stats row -->
+    <div class="stats-row">
+      <div class="metric-card cyan">
+        <div class="metric-label">Frame Rate</div>
+        <div class="metric-value" id="metricFps">—</div>
+        <div class="metric-sub">frames / second</div>
+      </div>
+      <div class="metric-card green">
+        <div class="metric-label">Total Detections</div>
+        <div class="metric-value" id="metricTotal">0</div>
+        <div class="metric-sub">all mosquitoes</div>
+      </div>
+      <div class="metric-card purple">
+        <div class="metric-label">Active This Frame</div>
+        <div class="metric-value" id="metricActive">0</div>
+        <div class="metric-sub">in current view</div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Right: Side panel -->
+  <div class="side-panel">
+
+    <!-- Alert -->
+    <div class="alert-panel" id="alertPanel">
+      <div class="alert-icon" id="alertIcon">✅</div>
+      <div class="alert-text" id="alertText">Area Clear</div>
+      <div class="alert-sub" id="alertSub">No mosquitoes detected</div>
+    </div>
+
+    <!-- Class breakdown -->
+    <div class="panel-card">
+      <div class="panel-title">
+        <div class="panel-title-dot" style="background:var(--accent)"></div>
+        Species Breakdown
+      </div>
+      <div>
+        <div class="class-row">
+          <div class="class-info">
+            <div class="class-swatch" style="background:var(--accent)"></div>
+            <div>
+              <div class="class-name">Aedes Aegypti</div>
+              <div class="class-abbr">Dengue / Zika vector</div>
+            </div>
+          </div>
+          <div class="class-count" id="countAegypti" style="color:var(--accent)">0</div>
+        </div>
+        <div class="class-row">
+          <div class="class-info">
+            <div class="class-swatch" style="background:var(--accent2)"></div>
+            <div>
+              <div class="class-name">Aedes Albopictus</div>
+              <div class="class-abbr">Tiger mosquito</div>
+            </div>
+          </div>
+          <div class="class-count" id="countAlbopictus" style="color:var(--accent2)">0</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- FPS history mini-bars -->
+    <div class="panel-card">
+      <div class="panel-title">
+        <div class="panel-title-dot" style="background:var(--green)"></div>
+        Performance Monitor
+      </div>
+      <div class="fps-bar-wrap" id="fpsHistory"></div>
+      <div style="font-size:0.7rem;color:var(--muted);margin-top:0.6rem">
+        Target: ≥10 FPS on Pi 5 (OpenVINO)
+      </div>
+    </div>
+
+    <!-- Detection log -->
+    <div class="panel-card" style="flex:1">
+      <div class="panel-title">
+        <div class="panel-title-dot" style="background:var(--accent2)"></div>
+        Detection Log
+      </div>
+      <div class="log-scroll" id="logScroll">
+        <div class="log-entry">
+          <span class="log-time">--:--:--</span>
+          <span style="color:var(--muted)">Waiting for detections…</span>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+  // ── State ──────────────────────────────────────────────────────────────────
+  let ws = null;
+  let fpsHistory = [];
+  const MAX_FPS_HISTORY = 8;
+
+  // ── WebSocket ──────────────────────────────────────────────────────────────
+  function connect() {
+    const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+    ws = new WebSocket(`${proto}://${location.host}/ws`);
+
+    ws.onopen = () => {
+      document.getElementById('liveDot').className = 'pill-dot live';
+      document.getElementById('liveText').textContent = 'Live';
+    };
+
+    ws.onclose = () => {
+      document.getElementById('liveDot').className = 'pill-dot';
+      document.getElementById('liveText').textContent = 'Reconnecting…';
+      setTimeout(connect, 3000);
+    };
+
+    ws.onmessage = (e) => {
+      const msg = JSON.parse(e.data);
+      updateStats(msg);
+      if (msg.new_detections && msg.new_detections.length > 0) {
+        logDetections(msg.new_detections);
+        triggerAlert(msg.new_detections);
+      }
+    };
+  }
+
+  // ── Stats update ───────────────────────────────────────────────────────────
+  function updateStats(msg) {
+    const fps   = msg.fps   || 0;
+    const total = msg.total || 0;
+    const counts = msg.counts || {};
+    const active = msg.new_detections ? msg.new_detections.length : 0;
+
+    document.getElementById('metricFps').textContent   = fps.toFixed(1);
+    document.getElementById('metricTotal').textContent = total;
+    document.getElementById('metricActive').textContent = active;
+    document.getElementById('fpsDisplay').textContent  = `${fps.toFixed(1)} FPS`;
+
+    document.getElementById('countAegypti').textContent    = counts['Aedes Aegypti']    || 0;
+    document.getElementById('countAlbopictus').textContent = counts['Aedes Albopictus'] || 0;
+
+    // FPS history bars
+    fpsHistory.push(fps);
+    if (fpsHistory.length > MAX_FPS_HISTORY) fpsHistory.shift();
+    renderFpsHistory();
+  }
+
+  function renderFpsHistory() {
+    const maxFps = 30;
+    const el = document.getElementById('fpsHistory');
+    el.innerHTML = fpsHistory.map((f, i) => `
+      <div class="fps-bar-row">
+        <span class="fps-bar-label">${f.toFixed(0)}</span>
+        <div class="fps-bar-track">
+          <div class="fps-bar-fill" style="width:${Math.min(100, (f / maxFps) * 100)}%"></div>
+        </div>
+      </div>
+    `).join('');
+  }
+
+  // ── Alert ──────────────────────────────────────────────────────────────────
+  let alertTimeout = null;
+
+  function triggerAlert(detections) {
+    const panel = document.getElementById('alertPanel');
+    const pill  = document.getElementById('alertPill');
+    panel.classList.add('triggered');
+    pill.style.display = 'flex';
+
+    const labels = detections.map(d => d.label);
+    document.getElementById('alertIcon').textContent = '🚨';
+    document.getElementById('alertText').textContent = 'Mosquito Detected!';
+    document.getElementById('alertSub').textContent  =
+      `${labels.join(', ')} — conf ${Math.max(...detections.map(d => d.conf)).toFixed(2)}`;
+
+    clearTimeout(alertTimeout);
+    alertTimeout = setTimeout(() => {
+      panel.classList.remove('triggered');
+      pill.style.display = 'none';
+      document.getElementById('alertIcon').textContent = '✅';
+      document.getElementById('alertText').textContent = 'Area Clear';
+      document.getElementById('alertSub').textContent  = 'No mosquitoes detected';
+    }, 3000);
+  }
+
+  // ── Log ────────────────────────────────────────────────────────────────────
+  function logDetections(detections) {
+    const log = document.getElementById('logScroll');
+    const time = new Date().toLocaleTimeString();
+
+    // Remove placeholder
+    const placeholder = log.querySelector('[data-placeholder]');
+    if (placeholder) placeholder.remove();
+
+    for (const d of detections) {
+      const cls = d.label.toLowerCase().includes('aegypti') ? 'log-cls-aegypti' : 'log-cls-albopictus';
+      const entry = document.createElement('div');
+      entry.className = 'log-entry';
+      entry.innerHTML = `
+        <span class="log-time">${time}</span>
+        <span class="${cls}">${d.label}</span>
+        <span class="log-conf">${d.conf.toFixed(3)}</span>
+      `;
+      log.prepend(entry);
+    }
+
+    // Cap at 80 entries
+    while (log.children.length > 80) log.removeChild(log.lastChild);
+  }
+
+  // ── Reload stream if it stalls ────────────────────────────────────────────
+  const feed = document.getElementById('cameraFeed');
+  feed.onerror = () => {
+    setTimeout(() => { feed.src = '/video?' + Date.now(); }, 2000);
+  };
+
+  // ── Init ───────────────────────────────────────────────────────────────────
+  connect();
+</script>
+</body>
+</html>

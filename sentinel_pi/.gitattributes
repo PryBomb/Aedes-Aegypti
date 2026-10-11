@@ -1,0 +1,14 @@
+# Force LF line endings on the Pi — CRLF in shell scripts causes "bad interpreter" errors
+*.sh        eol=lf
+*.service   eol=lf
+*.py        eol=lf
+*.yaml      eol=lf
+*.yml       eol=lf
+*.md        eol=lf
+*.sql       eol=lf
+*.txt       eol=lf
+*.json      eol=lf
+*.html      eol=lf
+*.css       eol=lf
+*.js        eol=lf
+*.ps1       eol=crlf

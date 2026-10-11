@@ -1,0 +1,45 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Data (gitignored — use pull_from_pi.ps1 to retrieve)
+data/
+
+# Models (gitignored — copy manually or via push_to_pi.ps1)
+models/
+*.pt
+*.tflite
+*.onnx
+*.bin
+*.xml
+
+# Training outputs
+runs/
+
+# Datasets (live outside the repo)
+datasets/
+
+# Deploy secrets
+deploy/deploy.env
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# OS
+Thumbs.db
+.DS_Store
